@@ -1,28 +1,32 @@
 // benchmark for block-sparse spmm
+#include <stdio.h>
 #include <iostream>
-#include <fstream>
 #include "block_sparse/spmm/spmm_op.h"
 #include "block_sparse/cuda_array.h"
 
-int main(int argc, const char** argv)
+int main()
 {
-    int m = 1024, n = 1024, k = 1024;
-    float density = 0.2;
-    unsigned seed = 2021;
-    bool row_permute = false;
-
-    const int block_sz = 32;
-    
     // define a blockwise sparse matrix
     BlockwiseSpMatrix<half> spmat;
-    spmat.init_random(m, k, block_sz, 1, density, row_permute, seed);
-    if (argc > 1) {
-        std::ofstream file;
-        file.open(argv[1]);
-        spmat.dump(file);
-        file.close();
+
+    // initialize from input stream
+    spmat.load(std::cin);
+    
+    std::cout << "Finish matrix loading. Summary:\n";
+    std::cout << spmat.config_str << std::endl;
+
+    int m = spmat.nrow;
+    int k = spmat.ncol;
+    int n = 1024;
+    if (spmat.brow != 32)
+    {
+        std::cout << "This example code requires block brow=32.\n";
+        exit(0);
     }
+    
+    // initialize on GPU device
     spmat.transform_and_sync_device();
+
 
     CudaRandomArray<half> B;
     CudaOnesArray<half> C;
@@ -34,7 +38,7 @@ int main(int argc, const char** argv)
     C.sync_device();
     D.sync_device();
 
-    SpmmBlockwiseOp<ShapeBase<block_sz, 128, 32>,  // block tile
+    SpmmBlockwiseOp<ShapeBase<32, 128, 32>,  // block tile
                     ShapeBase<32, 32, 32>,         // warp tile
 #if GPU_CC >= 80
                     ShapeBase<16, 16, 16>,         // mma shape

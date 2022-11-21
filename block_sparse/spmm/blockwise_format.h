@@ -60,6 +60,10 @@ struct BlockwiseSpMatrix {
     void init_random(int nrow_, int ncol_, int brow_, int bcol_, 
     float expected_density, bool row_permute_, unsigned seed_) ;
 
+    void load(std::istream &in);
+
+    void dump(std::ostream &out);
+
     void transform_and_sync_device();
 };
 
@@ -101,6 +105,81 @@ int bcol_, float expected_density, bool row_permute_, unsigned seed_)  {
     std::stringstream s;
     s << nrow_ << " " << ncol_ << " " << brow_ << " " << bcol_ << " " 
         << this->density << " " << seed_ << " ";
+    if (this->row_permute) {
+        s << "row-permute ";
+    }
+    else {
+        s << "non-row-permute ";
+    }
+    config_str = s.str();
+
+    // set flag
+    initialized = true;
+    if (device_synced) {
+        // clear any old version
+        this->__clear_device_ref();
+        device_synced = false;
+    }
+}
+
+template<typename T>
+void BlockwiseSpMatrix<T>::dump(std::ostream &out)
+{
+    out << nrow << std::endl;
+    out << ncol << std::endl;
+    out << nnzb << std::endl;
+    out << brow << std::endl;
+    out << bcol << std::endl;
+    out << row_permute << std::endl;
+    for (int x = 0; x < (nrow / brow) + 1; x++) 
+        out << indptr[x] << " ";
+    out << std::endl;
+    for (int x = 0; x < nnzb; x++) 
+        out << indices[x] << " ";
+    out << std::endl;
+    for (int x = 0; x < nnzb * brow * bcol; x++) 
+        out << float(values[x]) << " ";
+    out << std::endl;
+    if (row_permute)
+    {
+        for (int x = 0; x < nrow; x++) 
+            out << row_permute_ids[x] << " ";
+        out << std::endl;
+    }
+}
+
+template<typename T>
+void BlockwiseSpMatrix<T>::load(std::istream &in) 
+{
+    in >> nrow >> ncol >> nnzb >> brow >> bcol >> row_permute;
+    indptr.resize((nrow/brow)+1);
+    for (int x = 0; x < (nrow / brow) + 1; x++) 
+        in >> indptr[x];
+    indices.resize(nnzb);
+    for (int x = 0; x < nnzb; x++) 
+        in >> indices[x];
+    values.resize(nnzb*brow*bcol);
+    float y;
+    for (int x = 0; x < nnzb * brow * bcol; x++) {
+        in >> y;
+        values[x] = static_cast<T>(y);
+    }
+    if (row_permute)
+    {
+        row_permute_ids.resize(nrow);
+        for (int x = 0; x < nrow; x++) 
+            in >> row_permute_ids[x];
+    }
+    else {
+        row_permute_ids.resize(0);
+    }
+    
+    density = (float)nnzb / (nrow/brow) / (ncol/bcol);
+
+    // generate a config string for logging
+    std::stringstream s;
+    s << nrow << " " << ncol << " " << brow << " " << bcol << " " 
+        << this->density << " " << seed << " ";
     if (this->row_permute) {
         s << "row-permute ";
     }
